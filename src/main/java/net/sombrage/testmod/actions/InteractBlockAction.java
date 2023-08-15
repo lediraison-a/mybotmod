@@ -5,7 +5,7 @@ import net.minecraft.util.Hand;
 import net.minecraft.util.hit.BlockHitResult;
 import net.sombrage.testmod.TestMod;
 
-public class InteractContainerAction implements IMyAction {
+public class InteractBlockAction implements IMyAction {
     @Override
     public TestMod.STATUS run() {
         var client = MinecraftClient.getInstance();
@@ -14,5 +14,10 @@ public class InteractContainerAction implements IMyAction {
             var ar = client.interactionManager.interactBlock(client.player, Hand.MAIN_HAND, blockHit);
         }
         return TestMod.STATUS.IDLE;
+    }
+
+    @Override
+    public boolean playNextAction() {
+        return false;
     }
 }

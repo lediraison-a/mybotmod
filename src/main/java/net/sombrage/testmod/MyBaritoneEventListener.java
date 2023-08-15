@@ -18,7 +18,6 @@ public class MyBaritoneEventListener implements AbstractGameEventListener {
     }
     @Override
     public void onPathEvent(PathEvent pathEvent) {
-        LOGGER.info("event : " + pathEvent);
         if (pathEvent.equals(PathEvent.CANCELED)) {
             runnable.run();
         }

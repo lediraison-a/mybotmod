@@ -1,15 +1,12 @@
 package net.sombrage.testmod;
 
 import baritone.api.BaritoneAPI;
-import baritone.api.IBaritone;
-import baritone.api.event.events.PlayerUpdateEvent;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
-import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.screen.ingame.GenericContainerScreen;
-import net.sombrage.testmod.actions.CloseContainerAction;
-import net.sombrage.testmod.actions.GotoAction;
-import net.sombrage.testmod.actions.IMyAction;
-import net.sombrage.testmod.actions.InteractContainerAction;
+import net.sombrage.testmod.actions.*;
+import net.sombrage.testmod.position.PositionRegister;
+import net.sombrage.testmod.utils.ActionExecutionException;
+import net.sombrage.testmod.utils.TickDelayExecutor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -19,66 +16,93 @@ import java.util.Queue;
 
 public class TestMod {
 
+    private static TestMod instance;
+
     public static final Logger LOGGER = LoggerFactory.getLogger(TestMod.class);
+
+
 
     public enum STATUS {
         STOP,
         PATHING,
         IDLE,
+        WAITING,
         INTERACTING;
     }
 
-    private IBaritone baritone;
-
     ContainerInteractionManager containerInteractionManager;
 
-    public STATUS currentStatus;
-
-    private ContainerAccessPosition dumpPos;
+    private PositionRegister positionRegister;
 
 
     private Queue<IMyAction> actionList;
     private IMyAction currentAction;
+    public STATUS currentStatus;
 
-    public TestMod() {
-        this.baritone = BaritoneAPI.getProvider().getPrimaryBaritone();
+    private TickDelayExecutor tickDelayExecutor;
+
+    private TestMod() {
         currentStatus = STATUS.STOP;
         actionList = new LinkedList<>();
 
         containerInteractionManager = null;
+        positionRegister = new PositionRegister();
+
+        tickDelayExecutor = new TickDelayExecutor();
+
+        setListeners();
+    }
+
+    private void setListeners() {
 
         new MyBaritoneEventListener(() -> {
             if (currentAction instanceof GotoAction) {
                 currentStatus = STATUS.IDLE;
-                if (!((GotoAction) currentAction).isGoalReached()) {
+                if (((GotoAction) currentAction).isGoalReached()) {
+                    tickDelayExecutor.scheduleTask(() -> {
+                        next();
+                    }, 1);
+                }
+            }
+        });
+
+        ClientTickEvents.END_CLIENT_TICK.register(client -> {
+            if (currentAction == null) {
+                return;
+            }
+            LOGGER.info("action " + currentAction.getClass().getSimpleName());
+            if (currentAction instanceof WaitAction) {
+                currentStatus = STATUS.WAITING;
+                if (!((WaitAction) currentAction).isDone()) {
                     return;
                 }
                 next();
             }
-        });
-
-        ClientTickEvents.END_CLIENT_TICK.register(client -> {
-            if (currentAction == null) {
-                return;
-            }
-            if (client.currentScreen instanceof GenericContainerScreen && currentAction instanceof InteractContainerAction) {
+            if (client.currentScreen instanceof GenericContainerScreen && currentAction instanceof InteractBlockAction) {
                 currentStatus = STATUS.INTERACTING;
-                containerInteractionManager = new ContainerInteractionManager((GenericContainerScreen) client.currentScreen);
-                containerInteractionManager.printContent();
+                var ci = new ContainerInteractionManager((GenericContainerScreen) client.currentScreen);
+                containerInteractionManager = ci;
                 next();
             }
-        });
 
-        // register onCloseContainer listener
-        ClientTickEvents.END_CLIENT_TICK.register(client -> {
-            if (currentAction == null) {
-                return;
-            }
-            if (client.currentScreen == null && currentAction instanceof CloseContainerAction) {
-                currentStatus = STATUS.IDLE;
-                next();
-            }
         });
+    }
+
+    public ContainerInteractionManager getContainerInteractionManager() throws ActionExecutionException {
+        if (containerInteractionManager == null) {
+            throw new ActionExecutionException("no container open");
+        }
+        return containerInteractionManager;
+    }
+    public static TestMod getInstance() {
+        if (instance == null) {
+            instance = new TestMod();
+        }
+        return instance;
+    }
+
+    public PositionRegister getPositionRegister() {
+        return positionRegister;
     }
     public void start() {
         LOGGER.info("start");
@@ -86,9 +110,17 @@ public class TestMod {
         currentStatus = STATUS.IDLE;
 
 
-        actionList.add(new GotoAction(dumpPos));
-        actionList.add(new InteractContainerAction());
+        actionList.add(new GotoAction(positionRegister.get("pos")));
+        actionList.add(new InteractBlockAction());
+        actionList.add(new TakeAllAction());
         actionList.add(new CloseContainerAction());
+        actionList.add(new GotoAction(positionRegister.get("pos2")));
+        actionList.add(new InteractBlockAction());
+        actionList.add(new DepositAllAction());
+        actionList.add(new CloseContainerAction());
+        actionList.add(new GotoAction(positionRegister.get("pos3")));
+        actionList.add(new WaitAction(100));
+        actionList.add(new GotoAction(positionRegister.get("pos4")));
 
         next();
     }
@@ -96,18 +128,12 @@ public class TestMod {
     public void stop() {
         LOGGER.info("stop");
         currentStatus = STATUS.STOP;
-        baritone.getPathingBehavior().cancelEverything();
+        currentAction = null;
+//        if (containerInteractionManager != null) {
+//            containerInteractionManager.closeContainer();
+//        }
+        BaritoneAPI.getProvider().getPrimaryBaritone().getPathingBehavior().cancelEverything();
         actionList.clear();
-    }
-
-    public ContainerAccessPosition getDumpPos() {
-        return dumpPos;
-    }
-
-    public void setDumpPos() {
-        var player = baritone.getPlayerContext().player();
-        this.dumpPos = new ContainerAccessPosition(player.getPos(), player.getYaw(), player.getPitch());
-
     }
 
     private void next() {
@@ -115,47 +141,26 @@ public class TestMod {
             stop();
             return;
         }
+
         currentAction = actionList.remove();
-        currentStatus = currentAction.run();
+        LOGGER.info("next action: " + currentAction.getClass().getSimpleName());
+        runAction();
+
     }
 
-
-
-
-
-//    private void gotoDump() {
-//        currentStatus = STATUS.PATHING;
-//        interactPos = dumpPos;
-//        // baritoneGoal = new GoalBlock(new BlockPos(Utils.convertVec3dToVec3i(dumpPos.pos)));
-//        // baritone.getCustomGoalProcess().setGoalAndPath(baritoneGoal);
-//    }
-
-//    public void openContainer() {
-//        // currentStatus = STATUS.INTERACTING;
-//        var client = MinecraftClient.getInstance();
-//        client.player.setYaw(interactPos.yaw);
-//        client.player.setPitch(interactPos.pitch);
-//
-//        if (client.crosshairTarget instanceof BlockHitResult) {
-//            BlockHitResult blockHit = (BlockHitResult) client.crosshairTarget;
-//            var ar = client.interactionManager.interactBlock(client.player, Hand.MAIN_HAND, blockHit);
-//        }
-//    }
-
-
-
-//    public boolean isGoalReached() {
-//        if (currentStatus != STATUS.PATHING) {
-//            return false;
-//        }
-//        if (baritoneGoal.isInGoal(new BlockPos(Utils.convertVec3dToVec3i(interactPos.pos)))) {
-//            currentStatus = STATUS.IDLE;
-//        }
-//        return true;
-//    }
-
-
-
+    private void runAction() {
+        LOGGER.info("run action: " + currentAction.getClass().getSimpleName());
+        var playNext = currentAction.playNextAction();
+        try {
+            currentStatus = currentAction.run();
+            if (playNext) {
+                next();
+            }
+        } catch (ActionExecutionException e) {
+            LOGGER.error("ActionExecutionException", e);
+            stop();
+        }
+    }
 
 }
 

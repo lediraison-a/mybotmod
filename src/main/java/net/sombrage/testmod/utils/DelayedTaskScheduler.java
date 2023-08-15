@@ -1,4 +1,4 @@
-package net.sombrage.testmod;
+package net.sombrage.testmod.utils;
 
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.minecraft.client.MinecraftClient;

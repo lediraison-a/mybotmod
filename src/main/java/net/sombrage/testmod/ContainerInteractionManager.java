@@ -14,6 +14,8 @@ public class ContainerInteractionManager {
 
     private final GenericContainerScreen containerScreen;
 
+    private boolean ignorePlayerHandBar = true;
+
     public ContainerInteractionManager(GenericContainerScreen containerScreen) {
         this.containerScreen = containerScreen;
 
@@ -31,12 +33,12 @@ public class ContainerInteractionManager {
         }
     }
 
-    public int getPlayerInventorySlot(int slotId) {
-        return slotId - containerScreen.getScreenHandler().getRows() * 9;
+    public int getPlayerInventorySlot(int containerSlotId) {
+        return containerSlotId - containerScreen.getScreenHandler().getRows() * 9;
     }
 
-    public int getContainerInventorySlot(int inventorySlotId) {
-        return inventorySlotId + containerScreen.getScreenHandler().getRows() * 9;
+    public int getContainerInventorySlot(int playerSlotId) {
+        return playerSlotId + containerScreen.getScreenHandler().getRows() * 9;
     }
 
     public void clickSlot(int slotId, int button, SlotActionType slotActionType) {
@@ -49,7 +51,116 @@ public class ContainerInteractionManager {
                 client.player);
     }
 
-    public void test() {
+    public boolean isSlotEmpty(int slotId) {
+        return !containerScreen.getScreenHandler().getSlot(slotId).hasStack();
+    }
+
+    public void pickup(int slotId) {
+        clickSlot(slotId, 0, SlotActionType.PICKUP);
+    }
+
+    public int getNbNonEmptyContainer() {
+        //return containerScreen.getScreenHandler().slots.stream().filter(slot -> !slot.hasStack()).toArray().length;
+        int nbNonEmptyContainer = 0;
+        for (int i = 0; i < containerScreen.getScreenHandler().getRows() * 9; i++) {
+            if (!isSlotEmpty(i)) {
+                nbNonEmptyContainer++;
+            }
+        }
+        return nbNonEmptyContainer;
+    }
+
+    public int getNbNonEmptyPlayer() {
+        int nbNonEmptyPlayer = 0;
+        int nbSlot = ignorePlayerHandBar ?
+                containerScreen.getScreenHandler().slots.size() - 9 :
+                containerScreen.getScreenHandler().slots.size();
+        for (int i = getContainerInventorySlot(0); i < nbSlot ; i++) {
+            if (!isSlotEmpty(i)) {
+                nbNonEmptyPlayer++;
+            }
+        }
+        return nbNonEmptyPlayer;
+    }
+
+    public void pickupAll() {
+        int nbNonEmptyContainer = getNbNonEmptyContainer();
+        if (nbNonEmptyContainer == 0) {
+            return;
+        }
+        for(int i = 0; i < nbNonEmptyContainer; i++) {
+            var containerNonEmptySlot = getFirstContainerNonEmptySlot();
+            if(containerNonEmptySlot == -1) {
+                return;
+            }
+            pickup(containerNonEmptySlot);
+            var playerEmptySlot = getFirstPlayerEmptySlot();
+            if(playerEmptySlot == -1) {
+                return;
+            }
+            pickup(playerEmptySlot);
+        }
+    }
+
+    public void depositAll() {
+        int nbNonEmptyPlayer = getNbNonEmptyPlayer();
+        if (nbNonEmptyPlayer == 0) {
+            return;
+        }
+        for(int i = 0; i < nbNonEmptyPlayer; i++) {
+            var playerNonEmptySlot = getFirstPlayerNonEmptySlot();
+            if(playerNonEmptySlot == -1) {
+                return;
+            }
+            pickup(playerNonEmptySlot);
+            var containerEmptySlot = getFirstContainerEmptySlot();
+            if(containerEmptySlot == -1) {
+                return;
+            }
+            pickup(containerEmptySlot);
+        }
+    }
+
+    public int getFirstPlayerEmptySlot() {
+        int nbSlot = ignorePlayerHandBar ?
+                containerScreen.getScreenHandler().slots.size() - 9 :
+                containerScreen.getScreenHandler().slots.size();
+        for (int i = getContainerInventorySlot(0); i < nbSlot ; i++) {
+            if (isSlotEmpty(i)) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    public int getFirstPlayerNonEmptySlot() {
+        int nbSlot = ignorePlayerHandBar ?
+                containerScreen.getScreenHandler().slots.size() - 9 :
+                containerScreen.getScreenHandler().slots.size();
+        for (int i = getContainerInventorySlot(0); i < nbSlot ; i++) {
+            if (!isSlotEmpty(i)) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    public int getFirstContainerEmptySlot() {
+        for (int i = 0; i < containerScreen.getScreenHandler().getRows() * 9; i++) {
+            if (isSlotEmpty(i)) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    public int getFirstContainerNonEmptySlot() {
+        for (int i = 0; i < containerScreen.getScreenHandler().getRows() * 9; i++) {
+            if (!isSlotEmpty(i)) {
+                return i;
+            }
+        }
+        return -1;
     }
 
     public void closeContainer() {
