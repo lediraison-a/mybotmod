@@ -2,9 +2,13 @@ package net.sombrage.testmod;
 
 import baritone.api.BaritoneAPI;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
+import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
+import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.screen.ingame.GenericContainerScreen;
+import net.minecraft.text.Text;
 import net.sombrage.testmod.actions.*;
 import net.sombrage.testmod.position.PositionRegister;
+import net.sombrage.testmod.save.SaveManager;
 import net.sombrage.testmod.utils.ActionExecutionException;
 import net.sombrage.testmod.utils.TickDelayExecutor;
 import org.slf4j.Logger;
@@ -35,18 +39,26 @@ public class TestMod {
     private PositionRegister positionRegister;
 
 
-    private Queue<IMyAction> actionList;
+    private LinkedList<IMyAction> actionList;
+
+    private LinkedList<IMyAction> currentActionList;
+
+
     private IMyAction currentAction;
     public STATUS currentStatus;
 
     private TickDelayExecutor tickDelayExecutor;
 
+    private boolean logStatus = true;
+
     private TestMod() {
         currentStatus = STATUS.STOP;
         actionList = new LinkedList<>();
+        currentActionList = new LinkedList<>();
+
+        positionRegister = new PositionRegister();
 
         containerInteractionManager = null;
-        positionRegister = new PositionRegister();
 
         tickDelayExecutor = new TickDelayExecutor();
 
@@ -57,13 +69,21 @@ public class TestMod {
 
         new MyBaritoneEventListener(() -> {
             if (currentAction instanceof GotoAction) {
-                currentStatus = STATUS.IDLE;
+                updateStatus(currentStatus = STATUS.IDLE);
                 if (((GotoAction) currentAction).isGoalReached()) {
-                    tickDelayExecutor.scheduleTask(() -> {
-                        next();
-                    }, 1);
+                    tickDelayExecutor.scheduleTask(this::next, 1);
                 }
             }
+        });
+
+        ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> {
+            LOGGER.info("Disconnected from the server!");
+            stop();
+        });
+
+        ClientPlayConnectionEvents.JOIN.register((handler, sender, client) -> {
+            positionRegister.loadFromCsv();
+            LOGGER.info("Connected to the server!");
         });
 
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
@@ -72,14 +92,14 @@ public class TestMod {
             }
             LOGGER.info("action " + currentAction.getClass().getSimpleName());
             if (currentAction instanceof WaitAction) {
-                currentStatus = STATUS.WAITING;
+                updateStatus(currentStatus = STATUS.WAITING);
                 if (!((WaitAction) currentAction).isDone()) {
                     return;
                 }
                 next();
             }
             if (client.currentScreen instanceof GenericContainerScreen && currentAction instanceof InteractBlockAction) {
-                currentStatus = STATUS.INTERACTING;
+                updateStatus(currentStatus = STATUS.INTERACTING);
                 var ci = new ContainerInteractionManager((GenericContainerScreen) client.currentScreen);
                 containerInteractionManager = ci;
                 next();
@@ -101,6 +121,10 @@ public class TestMod {
         return instance;
     }
 
+    public Queue<IMyAction> getActionList() {
+        return actionList;
+    }
+
     public PositionRegister getPositionRegister() {
         return positionRegister;
     }
@@ -108,26 +132,12 @@ public class TestMod {
         LOGGER.info("start");
         BaritoneAPI.getSettings().allowBreak.value = false;
         currentStatus = STATUS.IDLE;
-
-
-        actionList.add(new GotoAction(positionRegister.get("pos")));
-        actionList.add(new InteractBlockAction());
-        actionList.add(new TakeAllAction());
-        actionList.add(new CloseContainerAction());
-        actionList.add(new GotoAction(positionRegister.get("pos2")));
-        actionList.add(new InteractBlockAction());
-        actionList.add(new DepositAllAction());
-        actionList.add(new CloseContainerAction());
-        actionList.add(new GotoAction(positionRegister.get("pos3")));
-        actionList.add(new WaitAction(100));
-        actionList.add(new GotoAction(positionRegister.get("pos4")));
-
         next();
     }
 
     public void stop() {
         LOGGER.info("stop");
-        currentStatus = STATUS.STOP;
+        updateStatus(STATUS.STOP);
         currentAction = null;
 //        if (containerInteractionManager != null) {
 //            containerInteractionManager.closeContainer();
@@ -137,12 +147,12 @@ public class TestMod {
     }
 
     private void next() {
-        if (actionList.isEmpty()) {
+        if (currentActionList.isEmpty()) {
             stop();
             return;
         }
 
-        currentAction = actionList.remove();
+        currentAction = currentActionList.remove();
         LOGGER.info("next action: " + currentAction.getClass().getSimpleName());
         runAction();
 
@@ -152,7 +162,7 @@ public class TestMod {
         LOGGER.info("run action: " + currentAction.getClass().getSimpleName());
         var playNext = currentAction.playNextAction();
         try {
-            currentStatus = currentAction.run();
+            updateStatus(currentAction.run());
             if (playNext) {
                 next();
             }
@@ -160,6 +170,14 @@ public class TestMod {
             LOGGER.error("ActionExecutionException", e);
             stop();
         }
+    }
+
+    private void updateStatus(STATUS status) {
+        if(logStatus) {
+            LOGGER.info("status: " + status);
+            MinecraftClient.getInstance().player.sendMessage(Text.of("status: " + status), false);
+        }
+        currentStatus = status;
     }
 
 }

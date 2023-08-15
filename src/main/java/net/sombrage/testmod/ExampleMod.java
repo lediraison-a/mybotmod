@@ -8,6 +8,7 @@ import net.fabricmc.fabric.api.client.command.v2.ClientCommandRegistrationCallba
 import net.fabricmc.fabric.api.client.command.v2.FabricClientCommandSource;
 import net.minecraft.command.argument.ArgumentTypes;
 import net.minecraft.text.Text;
+import net.sombrage.testmod.command.ClientCommandManager;
 import net.sombrage.testmod.utils.Utils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -25,35 +26,10 @@ public class ExampleMod implements ModInitializer {
 	@Override
 	public void onInitialize() {
 
-
-		ClientCommandRegistrationCallback.EVENT.register((dispatcher, registryAccess) -> registerCommands(dispatcher));
+		new ClientCommandManager();
+		var testMod = TestMod.getInstance();
 		LOGGER.info("Hello Fabric world!");
 	}
 
-	private void registerCommands(CommandDispatcher<FabricClientCommandSource> dispatcher) {
-		dispatcher.register(literal("registerPosition")
-				.then(argument("tag", StringArgumentType.string())
-						.executes(context -> {
-							var tag = StringArgumentType.getString(context, "tag");
-							var pg = TestMod.getInstance().getPositionRegister();
-							pg.addFromPlayer(tag);
-							var t = "position ["+ tag + "]" + Utils.convertVec3dToVec3i(pg.get(tag).pos);
-							context.getSource().getPlayer().sendMessage(Text.of(t));
-							return 1;
-						})
-				)
-		);
-
-
-		dispatcher.register(literal("start")
-				.executes(context -> {
-					context.getSource().getPlayer().sendMessage(Text.of("Start"));
-					TestMod.getInstance().start();
-					return 1;
-				})
-
-		);
-
-	}
 
 }

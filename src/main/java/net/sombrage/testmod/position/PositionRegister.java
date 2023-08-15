@@ -1,16 +1,19 @@
 package net.sombrage.testmod.position;
 
 import net.minecraft.client.MinecraftClient;
+import net.sombrage.testmod.save.SaveManager;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Set;
 
 public class PositionRegister {
 
     private Map<String, ContainerAccessPosition> positions;
 
     public PositionRegister() {
-        positions = new HashMap<String, ContainerAccessPosition>();
+        positions = new HashMap<>();
+        // positions = new HashMap<>();
     }
 
     public void add(String name, ContainerAccessPosition pos) {
@@ -37,4 +40,19 @@ public class PositionRegister {
         positions.clear();
     }
 
+    public Set<String> getTags() {
+        return positions.keySet();
+    }
+
+    public void setPositions(Map<String, ContainerAccessPosition> dataMap) {
+        positions = dataMap;
+    }
+
+    public void saveToCsv() {
+        SaveManager.savePositionRegisterAsCsv(this.positions);
+    }
+
+    public void loadFromCsv() {
+        this.positions = SaveManager.loadPositionRegisterFromCsv();
+    }
 }
