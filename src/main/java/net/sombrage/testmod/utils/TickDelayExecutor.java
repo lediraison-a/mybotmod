@@ -2,7 +2,6 @@ package net.sombrage.testmod.utils;
 
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.minecraft.client.MinecraftClient;
-import net.sombrage.testmod.MyBaritoneEventListener;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

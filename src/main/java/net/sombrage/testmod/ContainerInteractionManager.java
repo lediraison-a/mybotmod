@@ -2,6 +2,8 @@ package net.sombrage.testmod;
 
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.screen.ingame.GenericContainerScreen;
+import net.minecraft.item.Item;
+import net.minecraft.item.ItemStack;
 import net.minecraft.screen.slot.Slot;
 import net.minecraft.screen.slot.SlotActionType;
 import net.minecraft.text.Text;
@@ -167,5 +169,50 @@ public class ContainerInteractionManager {
         var client = MinecraftClient.getInstance();
         containerScreen.close();
         client.player.closeHandledScreen();
+    }
+
+    public int getPlayerFirstSlotOf(Item item) {
+        int nbSlot = ignorePlayerHandBar ?
+                containerScreen.getScreenHandler().slots.size() - 9 :
+                containerScreen.getScreenHandler().slots.size();
+        for (int i = getContainerInventorySlot(0); i < nbSlot ; i++) {
+            if (containerScreen.getScreenHandler().slots.get(i).getStack().getItem().equals(item)) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    public int getContainerFirstSlotOf(Item item) {
+        for (int i = 0; i < containerScreen.getScreenHandler().getRows() * 9; i++) {
+            if (containerScreen.getScreenHandler().slots.get(i).getStack().getItem().equals(item)) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    public boolean canInsertAtContainerSlot(int playerSlotId, int containerSlotId) {
+        var canStack = false;
+        var targetSlot = containerScreen.getScreenHandler().getSlot(containerSlotId);
+        var playerStack = containerScreen.getScreenHandler().getSlot(playerSlotId).getStack();
+        var slotStack = targetSlot.getStack();
+        if (targetSlot.canInsert(playerStack)) {
+            if (!slotStack.isEmpty()) {
+                if (ItemStack.canCombine(slotStack, playerStack) &&
+                        (slotStack.getCount() + playerStack.getCount() <= slotStack.getMaxCount())) {
+                    canStack = true;
+                }
+            } else {
+                canStack = true;
+            }
+        }
+        return canStack;
+    }
+
+
+    public void TakeAllOf(Item item) {
+
+
     }
 }
