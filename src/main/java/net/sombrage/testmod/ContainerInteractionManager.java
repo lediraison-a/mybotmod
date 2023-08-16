@@ -4,22 +4,39 @@ import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.screen.ingame.GenericContainerScreen;
 import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
+import net.minecraft.item.Items;
 import net.minecraft.screen.slot.Slot;
 import net.minecraft.screen.slot.SlotActionType;
 import net.minecraft.text.Text;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.List;
+
 public class ContainerInteractionManager {
+
+    public enum TRANSFER_DIRECTION {
+        PLAYER_TO_CONTAINER,
+        CONTAINER_TO_PLAYER;
+    }
 
     public static final Logger LOGGER = LoggerFactory.getLogger(ContainerInteractionManager.class);
 
     private final GenericContainerScreen containerScreen;
 
+    public List<Slot> containerSlots;
+    public List<Slot> playerSlots;
+
+
     private boolean ignorePlayerHandBar = true;
 
     public ContainerInteractionManager(GenericContainerScreen containerScreen) {
         this.containerScreen = containerScreen;
+
+        containerSlots = containerScreen.getScreenHandler().slots.subList(0, containerScreen.getScreenHandler().getRows() * 9);
+
+        var slotsSize = ignorePlayerHandBar ? containerScreen.getScreenHandler().slots.size() - 9 : containerScreen.getScreenHandler().slots.size();
+        playerSlots = containerScreen.getScreenHandler().slots.subList(getContainerInventorySlot(0), slotsSize);
 
         LOGGER.info("-> " + containerScreen.getScreenHandler().getRows());
     }
@@ -61,146 +78,21 @@ public class ContainerInteractionManager {
         clickSlot(slotId, 0, SlotActionType.PICKUP);
     }
 
-    public int getNbNonEmptyContainer() {
-        //return containerScreen.getScreenHandler().slots.stream().filter(slot -> !slot.hasStack()).toArray().length;
-        int nbNonEmptyContainer = 0;
-        for (int i = 0; i < containerScreen.getScreenHandler().getRows() * 9; i++) {
-            if (!isSlotEmpty(i)) {
-                nbNonEmptyContainer++;
-            }
-        }
-        return nbNonEmptyContainer;
-    }
-
-    public int getNbNonEmptyPlayer() {
-        int nbNonEmptyPlayer = 0;
-        int nbSlot = ignorePlayerHandBar ?
-                containerScreen.getScreenHandler().slots.size() - 9 :
-                containerScreen.getScreenHandler().slots.size();
-        for (int i = getContainerInventorySlot(0); i < nbSlot ; i++) {
-            if (!isSlotEmpty(i)) {
-                nbNonEmptyPlayer++;
-            }
-        }
-        return nbNonEmptyPlayer;
-    }
-
-    public void pickupAll() {
-        int nbNonEmptyContainer = getNbNonEmptyContainer();
-        if (nbNonEmptyContainer == 0) {
-            return;
-        }
-        for(int i = 0; i < nbNonEmptyContainer; i++) {
-            var containerNonEmptySlot = getFirstContainerNonEmptySlot();
-            if(containerNonEmptySlot == -1) {
-                return;
-            }
-            pickup(containerNonEmptySlot);
-            var playerEmptySlot = getFirstPlayerEmptySlot();
-            if(playerEmptySlot == -1) {
-                return;
-            }
-            pickup(playerEmptySlot);
-        }
-    }
-
-    public void depositAll() {
-        int nbNonEmptyPlayer = getNbNonEmptyPlayer();
-        if (nbNonEmptyPlayer == 0) {
-            return;
-        }
-        for(int i = 0; i < nbNonEmptyPlayer; i++) {
-            var playerNonEmptySlot = getFirstPlayerNonEmptySlot();
-            if(playerNonEmptySlot == -1) {
-                return;
-            }
-            pickup(playerNonEmptySlot);
-            var containerEmptySlot = getFirstContainerEmptySlot();
-            if(containerEmptySlot == -1) {
-                return;
-            }
-            pickup(containerEmptySlot);
-        }
-    }
-
-    public int getFirstPlayerEmptySlot() {
-        int nbSlot = ignorePlayerHandBar ?
-                containerScreen.getScreenHandler().slots.size() - 9 :
-                containerScreen.getScreenHandler().slots.size();
-        for (int i = getContainerInventorySlot(0); i < nbSlot ; i++) {
-            if (isSlotEmpty(i)) {
-                return i;
-            }
-        }
-        return -1;
-    }
-
-    public int getFirstPlayerNonEmptySlot() {
-        int nbSlot = ignorePlayerHandBar ?
-                containerScreen.getScreenHandler().slots.size() - 9 :
-                containerScreen.getScreenHandler().slots.size();
-        for (int i = getContainerInventorySlot(0); i < nbSlot ; i++) {
-            if (!isSlotEmpty(i)) {
-                return i;
-            }
-        }
-        return -1;
-    }
-
-    public int getFirstContainerEmptySlot() {
-        for (int i = 0; i < containerScreen.getScreenHandler().getRows() * 9; i++) {
-            if (isSlotEmpty(i)) {
-                return i;
-            }
-        }
-        return -1;
-    }
-
-    public int getFirstContainerNonEmptySlot() {
-        for (int i = 0; i < containerScreen.getScreenHandler().getRows() * 9; i++) {
-            if (!isSlotEmpty(i)) {
-                return i;
-            }
-        }
-        return -1;
-    }
-
     public void closeContainer() {
         var client = MinecraftClient.getInstance();
         containerScreen.close();
         client.player.closeHandledScreen();
     }
 
-    public int getPlayerFirstSlotOf(Item item) {
-        int nbSlot = ignorePlayerHandBar ?
-                containerScreen.getScreenHandler().slots.size() - 9 :
-                containerScreen.getScreenHandler().slots.size();
-        for (int i = getContainerInventorySlot(0); i < nbSlot ; i++) {
-            if (containerScreen.getScreenHandler().slots.get(i).getStack().getItem().equals(item)) {
-                return i;
-            }
-        }
-        return -1;
-    }
-
-    public int getContainerFirstSlotOf(Item item) {
-        for (int i = 0; i < containerScreen.getScreenHandler().getRows() * 9; i++) {
-            if (containerScreen.getScreenHandler().slots.get(i).getStack().getItem().equals(item)) {
-                return i;
-            }
-        }
-        return -1;
-    }
-
-    public boolean canInsertAtContainerSlot(int playerSlotId, int containerSlotId) {
+    public boolean canInsertAtSlot(int sourceSlotId, int targetSlotId) {
         var canStack = false;
-        var targetSlot = containerScreen.getScreenHandler().getSlot(containerSlotId);
-        var playerStack = containerScreen.getScreenHandler().getSlot(playerSlotId).getStack();
+        var targetSlot = containerScreen.getScreenHandler().getSlot(targetSlotId);
+        var sourceStack = containerScreen.getScreenHandler().getSlot(sourceSlotId).getStack();
         var slotStack = targetSlot.getStack();
-        if (targetSlot.canInsert(playerStack)) {
+        if (targetSlot.canInsert(sourceStack)) {
             if (!slotStack.isEmpty()) {
-                if (ItemStack.canCombine(slotStack, playerStack) &&
-                        (slotStack.getCount() + playerStack.getCount() <= slotStack.getMaxCount())) {
+                if (ItemStack.canCombine(slotStack, sourceStack) &&
+                        (slotStack.getCount() + sourceStack.getCount() <= slotStack.getMaxCount())) {
                     canStack = true;
                 }
             } else {
@@ -210,9 +102,76 @@ public class ContainerInteractionManager {
         return canStack;
     }
 
+    private List<Slot> getSlotsCanTransfer(Slot sourceSlot, List<Slot> targetSlots) {
+        return targetSlots.stream().filter(targetSlot -> canInsertAtSlot(sourceSlot.id, targetSlot.id)).toList();
+    }
 
-    public void TakeAllOf(Item item) {
+    private List<Slot> getSlotsOfItem(Item item, List<Slot> slots) {
+        return slots.stream().filter(slot -> slot.getStack().getItem().equals(item)).toList();
+    }
 
+    public boolean transferAll(TRANSFER_DIRECTION transferDirection) {
+        var targetSlots = transferDirection == TRANSFER_DIRECTION.PLAYER_TO_CONTAINER ?
+                containerSlots :
+                playerSlots;
+        var sourceSlots = transferDirection == TRANSFER_DIRECTION.PLAYER_TO_CONTAINER ?
+                playerSlots :
+                containerSlots;
 
+        return transferSlots(targetSlots, sourceSlots);
+    }
+
+    public boolean transferAllOf(List<Item> items, TRANSFER_DIRECTION transferDirection) {
+        for (Item item : items) {
+            transferAllOf(item, transferDirection);
+        }
+        return true;
+    }
+
+    public boolean transferAllOf(Item item, TRANSFER_DIRECTION transferDirection) {
+        var targetSlots = transferDirection == TRANSFER_DIRECTION.PLAYER_TO_CONTAINER ?
+                containerSlots :
+                playerSlots;
+        var sourceSlots = transferDirection == TRANSFER_DIRECTION.PLAYER_TO_CONTAINER ?
+                playerSlots :
+                containerSlots;
+
+        var sourceSlotsOfItem = getSlotsOfItem(item, sourceSlots);
+        return transferSlots(targetSlots, sourceSlotsOfItem);
+    }
+
+    public boolean transferAllExcept(Item item, TRANSFER_DIRECTION transferDirection) {
+        var targetSlots = transferDirection == TRANSFER_DIRECTION.PLAYER_TO_CONTAINER ?
+                containerSlots :
+                playerSlots;
+        var sourceSlots = transferDirection == TRANSFER_DIRECTION.PLAYER_TO_CONTAINER ?
+                playerSlots :
+                containerSlots;
+
+        sourceSlots = sourceSlots.stream().filter(slot -> !slot.getStack().getItem().equals(item)).toList();
+        return transferSlots(targetSlots, sourceSlots);
+    }
+
+    public boolean transferAllExcept(List<Item> items, TRANSFER_DIRECTION transferDirection) {
+        for (Item item : items) {
+            transferAllExcept(item, transferDirection);
+        }
+        return true;
+    }
+
+    private boolean transferSlots(List<Slot> targetSlots, List<Slot> sourceSlots) {
+        for(Slot sourceSlot : sourceSlots) {
+            var targetSlotsCanTransfer = getSlotsCanTransfer(sourceSlot, targetSlots);
+            if(targetSlotsCanTransfer.isEmpty()) {
+                return true;
+            }
+            pickup(sourceSlot.id);
+            pickup(targetSlotsCanTransfer.get(0).id);
+        }
+        return true;
+    }
+
+    public List<Item> getAllItemTypes(List<Slot> slots) {
+        return slots.stream().map(slot -> slot.getStack().getItem()).distinct().filter(item -> !item.equals(Items.AIR.asItem())).toList();
     }
 }
