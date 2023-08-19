@@ -12,8 +12,10 @@ import net.minecraft.text.Text;
 import net.minecraft.util.Hand;
 import net.minecraft.util.hit.BlockHitResult;
 import net.minecraft.util.math.BlockPos;
+import net.minecraft.util.math.Vec3i;
 import net.sombrage.testmod.models.ActionList;
 import net.sombrage.testmod.models.ContainerAccessPosition;
+import net.sombrage.testmod.save.SaveManager;
 import net.sombrage.testmod.utils.ActionExecutionException;
 import net.sombrage.testmod.utils.TickDelayExecutor;
 import net.sombrage.testmod.utils.Utils;
@@ -119,8 +121,8 @@ public class TestMod {
         });
 
         ClientPlayConnectionEvents.JOIN.register((handler, sender, client) -> {
-            // positionRegister.loadFromCsv();
             LOGGER.info("Connected to the server!");
+            positions = SaveManager.loadPositionRegisterFromCsv();
         });
 
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
@@ -153,11 +155,12 @@ public class TestMod {
             runningActionIndex = 0;
         }
         if (runningActionListIndex > runningActions.size() - 1) {
-            if (settings.endAtStartPosition) {
+            if (settings.endAtStartPosition &&
+                    !getPlayerPos().equals(Utils.convertVec3dToVec3i(startPostion.pos))) {
                 actionEndAtStart();
-                return;
+            } else {
+                stop();
             }
-            stop();
             return;
         }
 
@@ -214,11 +217,17 @@ public class TestMod {
         return positions;
     }
 
+    private Vec3i getPlayerPos() {
+        var client = MinecraftClient.getInstance();
+        return Utils.convertVec3dToVec3i(client.player.getPos());
+    }
+
     // _____________________________________________________________________________
 
     public void start() {
         LOGGER.info("start");
         logToPlayer("start");
+        savePositions();
         currentStatus = STATUS.IDLE;
         // runningActions = List.of(new ActionList(repeatActions, List.copyOf(actions)));
         BaritoneAPI.getSettings().allowBreak.value = false;
@@ -234,6 +243,16 @@ public class TestMod {
         runningActions = new ArrayList<>();
         runningActionIndex = -1;
         runningActionListIndex = 0;
+    }
+
+    public void clearPositionsFilters() {
+        positions.values().forEach(pos -> {
+            pos.filterItems = new ArrayList<>();
+        });
+    }
+
+    public void savePositions() {
+        SaveManager.savePositionRegisterAsCsv(positions);
     }
 
     // _____________________________________________________________________________
@@ -269,6 +288,12 @@ public class TestMod {
         return true;
     }
 
+    private void actionEndAtStart() {
+        actionGoto(startPostion);
+        runningActionListIndex = runningActions.size() - 1;
+        runningActionIndex = runningActions.get(runningActionListIndex).actions.size() - 1;
+    }
+
     // _____________________________________________________________________________
 
 
@@ -295,23 +320,27 @@ public class TestMod {
             });
             actions.add(this::actionCloseContainer);
         }
+        actions.add(() -> {
+            savePositions();
+            return true;
+        });
         runningActions.add(new ActionList(false, actions));
     }
 
     public void actionSortPositionsContent(List<ContainerAccessPosition> positions) {
-        actionEndAtStart();
         actionExploreUnknownFilters(positions);
 
-        runningActions.add(new ActionList(false, List.of(() -> {
-            List<Item> filterItems = new ArrayList<>();
+        runningActions.add(new ActionList(settings.repeatSort, List.of(() -> {
             var actions = new ArrayList<Callable<Boolean>>();
 
+            List<Item> filterItems = new ArrayList<>();
             positions.stream()
                     .filter(pos -> pos.doFilter)
                     .map(pos -> pos.filterItems)
                     .forEachOrdered(filterItems::addAll);
 
-            for (var pos : positions) {
+
+            for (var pos : ContainerAccessPosition.sortByDoFilter(positions)) {
                 actions.add(() -> actionGoto(pos));
                 actions.add(this::actionInteractBlock);
                 actions.add(() -> {
@@ -340,10 +369,9 @@ public class TestMod {
     }
 
     public void actionSortPlayer(List<ContainerAccessPosition> positions) {
-        actionEndAtStart();
         actionExploreUnknownFilters(positions);
 
-        runningActions.add(new ActionList(false, List.of(() -> {
+        runningActions.add(new ActionList(settings.repeatSort, List.of(() -> {
             var playerItems = ContainerInteractionManager.getPlayerItems();
             var actions = new ArrayList<Callable<Boolean>>();
 
@@ -371,14 +399,6 @@ public class TestMod {
         })));
     }
 
-    private void actionEndAtStart() {
-        var actions = new ArrayList<Callable<Boolean>>();
-        actions.add(() -> {
-            runningActions.add(new ActionList(false, List.of(() -> actionGoto(startPostion))));
-            return true;
-        });
-        runningActions.add(new ActionList(false, actions));
-    }
 
 
 }

@@ -32,4 +32,16 @@ public class ContainerAccessPosition {
         filterItems = new ArrayList<>();
         doFilter = false;
     }
+
+    public static List<ContainerAccessPosition> sortByDoFilter(List<ContainerAccessPosition> positions) {
+        return positions.stream().sorted((o1, o2) -> {
+            if (o1.doFilter && !o2.doFilter) {
+                return 1;
+            } else if (!o1.doFilter && o2.doFilter) {
+                return -1;
+            } else {
+                return 0;
+            }
+        }).toList();
+    }
 }

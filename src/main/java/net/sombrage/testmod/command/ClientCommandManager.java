@@ -10,8 +10,6 @@ import net.sombrage.testmod.TestMod;
 import net.sombrage.testmod.models.ContainerAccessPosition;
 import net.sombrage.testmod.utils.Utils;
 
-import java.util.List;
-
 import static net.fabricmc.fabric.api.client.command.v2.ClientCommandManager.argument;
 import static net.fabricmc.fabric.api.client.command.v2.ClientCommandManager.literal;
 
