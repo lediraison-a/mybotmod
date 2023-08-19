@@ -1,7 +1,7 @@
 package net.sombrage.testmod.save;
 
 import net.minecraft.client.MinecraftClient;
-import net.sombrage.testmod.position.ContainerAccessPosition;
+import net.sombrage.testmod.models.ContainerAccessPosition;
 import net.sombrage.testmod.save.csv.CSVReaderWriter;
 
 import java.io.File;

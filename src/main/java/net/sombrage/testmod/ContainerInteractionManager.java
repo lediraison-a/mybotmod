@@ -2,6 +2,7 @@ package net.sombrage.testmod;
 
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.screen.ingame.GenericContainerScreen;
+import net.minecraft.inventory.CraftingInventory;
 import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
 import net.minecraft.item.Items;
@@ -12,6 +13,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.List;
+import java.util.stream.Collectors;
 
 public class ContainerInteractionManager {
 
@@ -28,9 +30,10 @@ public class ContainerInteractionManager {
     public List<Slot> playerSlots;
 
 
-    private boolean ignorePlayerHandBar = true;
+    private boolean ignorePlayerHandBar;
 
-    public ContainerInteractionManager(GenericContainerScreen containerScreen) {
+    public ContainerInteractionManager(GenericContainerScreen containerScreen, boolean ignorePlayerHandBar) {
+        this.ignorePlayerHandBar = ignorePlayerHandBar;
         this.containerScreen = containerScreen;
 
         containerSlots = containerScreen.getScreenHandler().slots.subList(0, containerScreen.getScreenHandler().getRows() * 9);
@@ -122,10 +125,15 @@ public class ContainerInteractionManager {
     }
 
     public boolean transferAllOf(List<Item> items, TRANSFER_DIRECTION transferDirection) {
-        for (Item item : items) {
-            transferAllOf(item, transferDirection);
-        }
-        return true;
+        var targetSlots = transferDirection == TRANSFER_DIRECTION.PLAYER_TO_CONTAINER ?
+                containerSlots :
+                playerSlots;
+        var sourceSlots = transferDirection == TRANSFER_DIRECTION.PLAYER_TO_CONTAINER ?
+                playerSlots :
+                containerSlots;
+
+        sourceSlots = sourceSlots.stream().filter(slot -> items.contains(slot.getStack().getItem())).toList();
+        return transferSlots(targetSlots, sourceSlots);
     }
 
     public boolean transferAllOf(Item item, TRANSFER_DIRECTION transferDirection) {
@@ -153,10 +161,15 @@ public class ContainerInteractionManager {
     }
 
     public boolean transferAllExcept(List<Item> items, TRANSFER_DIRECTION transferDirection) {
-        for (Item item : items) {
-            transferAllExcept(item, transferDirection);
-        }
-        return true;
+        var targetSlots = transferDirection == TRANSFER_DIRECTION.PLAYER_TO_CONTAINER ?
+                containerSlots :
+                playerSlots;
+        var sourceSlots = transferDirection == TRANSFER_DIRECTION.PLAYER_TO_CONTAINER ?
+                playerSlots :
+                containerSlots;
+
+        sourceSlots = sourceSlots.stream().filter(slot -> !items.contains(slot.getStack().getItem())).toList();
+        return transferSlots(targetSlots, sourceSlots);
     }
 
     private boolean transferSlots(List<Slot> targetSlots, List<Slot> sourceSlots) {
@@ -171,7 +184,37 @@ public class ContainerInteractionManager {
         return true;
     }
 
-    public List<Item> getAllItemTypes(List<Slot> slots) {
+    public static List<Item> getAllItemTypes(List<Slot> slots) {
         return slots.stream().map(slot -> slot.getStack().getItem()).distinct().filter(item -> !item.equals(Items.AIR.asItem())).toList();
+    }
+
+    public static List<Slot> getInventorySlots(boolean ignorePlayerHandBar) {
+        var client = MinecraftClient.getInstance();
+        var InventoryScreen = (net.minecraft.client.gui.screen.ingame.InventoryScreen) client.currentScreen;
+        var slots = InventoryScreen.getScreenHandler().slots;
+
+        var armorSlotIds = List.of(36, 37, 38, 39);
+        var offHandSlotId = List.of(40);
+        var hotbarSlotIds = List.of(0, 1, 2, 3, 4, 5, 6, 7, 8);
+
+        var is = slots.stream().filter(slot ->
+                        !armorSlotIds.contains(slot.id) &&
+                        !offHandSlotId.contains(slot.id) &&
+                        !(slot.inventory instanceof CraftingInventory)).toList();
+
+        if (ignorePlayerHandBar) {
+            is = is.stream().filter(slot -> !hotbarSlotIds.contains(slot.id)).toList();
+        }
+        return is;
+    }
+
+    public static List<Item> getPlayerItems() {
+        var player = MinecraftClient.getInstance().player;
+        return player.getInventory().main
+                .subList(9, 36).stream()
+                .map(ItemStack::getItem)
+                .distinct()
+                .filter(item -> !item.equals(Items.AIR.asItem()))
+                .collect(Collectors.toList());
     }
 }

@@ -14,7 +14,7 @@ public class ExampleMixin {
 	@Inject(method = "closeHandledScreen", at = @At("HEAD"))
 	public void onCloseHandledScreen(CallbackInfo ci) {
 		// Your code here
-		MinecraftClient.getInstance().player.sendMessage(Text.of("Player closed a container!"), false);
+		// MinecraftClient.getInstance().player.sendMessage(Text.of("Player closed a container!"), false);
 	}
 }
 

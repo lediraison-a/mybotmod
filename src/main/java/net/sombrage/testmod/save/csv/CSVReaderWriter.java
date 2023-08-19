@@ -1,7 +1,7 @@
 package net.sombrage.testmod.save.csv;
 
 import net.minecraft.util.math.Vec3d;
-import net.sombrage.testmod.position.ContainerAccessPosition;
+import net.sombrage.testmod.models.ContainerAccessPosition;
 
 import java.io.*;
 import java.util.HashMap;

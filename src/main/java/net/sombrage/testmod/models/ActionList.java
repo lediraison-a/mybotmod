@@ -1,4 +1,4 @@
-package net.sombrage.testmod;
+package net.sombrage.testmod.models;
 
 import java.util.List;
 import java.util.concurrent.Callable;

@@ -7,11 +7,13 @@ import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.screen.ingame.GenericContainerScreen;
 import net.minecraft.command.argument.EntityAnchorArgumentType;
+import net.minecraft.item.Item;
+import net.minecraft.text.Text;
 import net.minecraft.util.Hand;
 import net.minecraft.util.hit.BlockHitResult;
 import net.minecraft.util.math.BlockPos;
-import net.sombrage.testmod.position.ContainerAccessPosition;
-import net.sombrage.testmod.position.PositionRegister;
+import net.sombrage.testmod.models.ActionList;
+import net.sombrage.testmod.models.ContainerAccessPosition;
 import net.sombrage.testmod.utils.ActionExecutionException;
 import net.sombrage.testmod.utils.TickDelayExecutor;
 import net.sombrage.testmod.utils.Utils;
@@ -19,7 +21,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.Callable;
 
 
@@ -33,35 +37,53 @@ public class TestMod {
         IDLE,
     }
 
+    // _____________________________________________________________________________
+
     private static TestMod instance;
 
-    public static final Logger LOGGER = LoggerFactory.getLogger(TestMod.class);
+    public static TestMod getInstance() {
+        if (instance == null) {
+            instance = new TestMod();
+        }
+        return instance;
+    }
+
+    private static final Logger LOGGER = LoggerFactory.getLogger(TestMod.class);
+
+
 
     ContainerInteractionManager containerInteractionManager;
 
-    private PositionRegister positionRegister;
-
+    // baritone goal
     private ContainerAccessPosition goalPosition;
     private GoalBlock goal;
 
 
-    private List<Callable<Boolean>> actions;
-
+    // actions
     private List<ActionList> runningActions;
     private int runningActionIndex;
-
     private int runningActionListIndex;
 
+    // status
     private STATUS currentStatus;
-    private TickDelayExecutor tickDelayExecutor;
+
+    // tick delay
+    private final TickDelayExecutor tickDelayExecutor;
     private int waitingTicks;
 
 
-    private TestMod() {
-        actions = new ArrayList<>();
-        runningActions = new ArrayList<>();
+    // settings
+    private TestModSettings settings;
 
-        positionRegister = new PositionRegister();
+    // positions
+    private Map<String, ContainerAccessPosition> positions;
+
+    private ContainerAccessPosition startPostion;
+
+    // _____________________________________________________________________________
+
+    private TestMod() {
+        runningActions = new ArrayList<>();
 
         containerInteractionManager = null;
 
@@ -73,9 +95,14 @@ public class TestMod {
 
         currentStatus = STATUS.STOP;
 
+        settings = new TestModSettings();
+
+        positions = new HashMap<>();
+
         setListeners();
     }
 
+    // _____________________________________________________________________________
     private void setListeners() {
 
         new MyBaritoneEventListener(() -> {
@@ -92,7 +119,7 @@ public class TestMod {
         });
 
         ClientPlayConnectionEvents.JOIN.register((handler, sender, client) -> {
-            positionRegister.loadFromCsv();
+            // positionRegister.loadFromCsv();
             LOGGER.info("Connected to the server!");
         });
 
@@ -101,96 +128,19 @@ public class TestMod {
                 return;
             }
             if (currentStatus == STATUS.WAIT) {
-                if (!isDone()) {
+                if (!isDoneWaiting()) {
                     return;
                 }
                 next();
             }
-            if (client.currentScreen instanceof GenericContainerScreen && currentStatus.equals(STATUS.INTERACT)) {
-                var ci = new ContainerInteractionManager((GenericContainerScreen) client.currentScreen);
-                containerInteractionManager = ci;
+            if (client.currentScreen instanceof GenericContainerScreen &&
+                            currentStatus.equals(STATUS.INTERACT)) {
+                containerInteractionManager = new ContainerInteractionManager(
+                        (GenericContainerScreen) client.currentScreen,
+                        settings.ignoreHandBar);
                 next();
             }
-
         });
-    }
-
-    public void start() {
-        LOGGER.info("start");
-        currentStatus = STATUS.IDLE;
-        // runningActions = List.of(new ActionList(repeatActions, List.copyOf(actions)));
-        BaritoneAPI.getSettings().allowBreak.value = false;
-        next();
-    }
-
-    public void stop() {
-        LOGGER.info("stop");
-        currentStatus = STATUS.STOP;
-        BaritoneAPI.getProvider().getPrimaryBaritone().getPathingBehavior().cancelEverything();
-        runningActionIndex = -1;
-    }
-
-    public boolean actionGoto(ContainerAccessPosition position) {
-        goalPosition = position;
-        goal = new GoalBlock(new BlockPos(Utils.convertVec3dToVec3i(position.pos)));
-        var baritone = BaritoneAPI.getProvider().getPrimaryBaritone();
-        baritone.getCustomGoalProcess().setGoalAndPath(goal);
-        currentStatus = STATUS.PATHING;
-        return false;
-    }
-
-    public boolean actionInteractBlock() {
-        var client = MinecraftClient.getInstance();
-        if (client.crosshairTarget instanceof BlockHitResult) {
-            BlockHitResult blockHit = (BlockHitResult) client.crosshairTarget;
-            var ar = client.interactionManager.interactBlock(client.player, Hand.MAIN_HAND, blockHit);
-            currentStatus = STATUS.INTERACT;
-        }
-        return false;
-    }
-
-    public boolean actionWait(int ticks) {
-        waitingTicks = ticks;
-        currentStatus = STATUS.WAIT;
-        return false;
-    }
-
-    public boolean actionCloseContainer() throws ActionExecutionException {
-        getContainerInteractionManager().closeContainer();
-        currentStatus = STATUS.IDLE;
-        return true;
-    }
-
-    private boolean isGoalReached() {
-        var baritone = BaritoneAPI.getProvider().getPrimaryBaritone();
-        if(goal.isInGoal(new BlockPos(Utils.convertVec3dToVec3i(goalPosition.pos)))
-        ) {
-            baritone.getPlayerContext().player().lookAt(EntityAnchorArgumentType.EntityAnchor.EYES, goalPosition.targetPos);
-            return true;
-        }
-        return false;
-    }
-
-    public boolean isDone() {
-        waitingTicks--;
-        return waitingTicks == 0;
-    }
-
-    public ContainerInteractionManager getContainerInteractionManager() throws ActionExecutionException {
-        if (containerInteractionManager == null) {
-            throw new ActionExecutionException("no container open");
-        }
-        return containerInteractionManager;
-    }
-    public static TestMod getInstance() {
-        if (instance == null) {
-            instance = new TestMod();
-        }
-        return instance;
-    }
-
-    public PositionRegister getPositionRegister() {
-        return positionRegister;
     }
 
 
@@ -203,6 +153,10 @@ public class TestMod {
             runningActionIndex = 0;
         }
         if (runningActionListIndex > runningActions.size() - 1) {
+            if (settings.endAtStartPosition) {
+                actionEndAtStart();
+                return;
+            }
             stop();
             return;
         }
@@ -222,53 +176,210 @@ public class TestMod {
         }
     }
 
-    public List<Callable<Boolean>> getActions() {
-        return actions;
-    }
 
-    public String actionsToString() {
-        var sb = new StringBuilder();
-        for (var action : actions) {
-            sb.append(action.getClass().getSimpleName());
-            sb.append("\n");
+    private boolean isGoalReached() {
+        var baritone = BaritoneAPI.getProvider().getPrimaryBaritone();
+        if(goal.isInGoal(new BlockPos(Utils.convertVec3dToVec3i(goalPosition.pos)))
+        ) {
+            baritone.getPlayerContext()
+                    .player()
+                    .lookAt(EntityAnchorArgumentType.EntityAnchor.EYES, goalPosition.targetPos);
+            return true;
         }
-        return sb.toString();
+        return false;
     }
 
-    public void actionSortPositionsContent(List<ContainerAccessPosition> positions) {
-        var filteredEmptyPos = positions.stream().filter(pos -> pos.doFilter && pos.filterItems.isEmpty()).toList();
-        if (!filteredEmptyPos.isEmpty()) {
-            var actions = new ArrayList<Callable<Boolean>>();
-            for (var pos : filteredEmptyPos) {
-                actions.add(() -> actionGoto(pos));
-                actions.add(() -> actionInteractBlock());
-                actions.add(() -> {
-                    pos.filterItems = getContainerInteractionManager().getAllItemTypes(containerInteractionManager.containerSlots);
-                    return true;
-                });
-                actions.add(() -> actionCloseContainer());
-            }
-            runningActions.add(new ActionList(false, actions));
+    private boolean isDoneWaiting() {
+        waitingTicks--;
+        return waitingTicks == 0;
+    }
+
+
+
+    private static void logToPlayer(String text) {
+        var player = MinecraftClient.getInstance().player;
+        player.sendMessage(Text.of(text), false);
+    }
+
+    // _____________________________________________________________________________
+
+    private ContainerInteractionManager getContainerInteractionManager() throws ActionExecutionException {
+        if (containerInteractionManager == null) {
+            throw new ActionExecutionException("no container open");
+        }
+        return containerInteractionManager;
+    }
+
+    public Map<String, ContainerAccessPosition> getPositions() {
+        return positions;
+    }
+
+    // _____________________________________________________________________________
+
+    public void start() {
+        LOGGER.info("start");
+        logToPlayer("start");
+        currentStatus = STATUS.IDLE;
+        // runningActions = List.of(new ActionList(repeatActions, List.copyOf(actions)));
+        BaritoneAPI.getSettings().allowBreak.value = false;
+        startPostion = new ContainerAccessPosition();
+        next();
+    }
+
+    public void stop() {
+        LOGGER.info("stop");
+        logToPlayer("stop");
+        currentStatus = STATUS.STOP;
+        BaritoneAPI.getProvider().getPrimaryBaritone().getPathingBehavior().cancelEverything();
+        runningActions = new ArrayList<>();
+        runningActionIndex = -1;
+        runningActionListIndex = 0;
+    }
+
+    // _____________________________________________________________________________
+
+    private boolean actionGoto(ContainerAccessPosition position) {
+        goalPosition = position;
+        goal = new GoalBlock(new BlockPos(Utils.convertVec3dToVec3i(position.pos)));
+        var baritone = BaritoneAPI.getProvider().getPrimaryBaritone();
+        baritone.getCustomGoalProcess().setGoalAndPath(goal);
+        currentStatus = STATUS.PATHING;
+        return false;
+    }
+
+    private boolean actionInteractBlock() {
+        var client = MinecraftClient.getInstance();
+        if (client.crosshairTarget instanceof BlockHitResult) {
+            BlockHitResult blockHit = (BlockHitResult) client.crosshairTarget;
+            var ar = client.interactionManager.interactBlock(client.player, Hand.MAIN_HAND, blockHit);
+            currentStatus = STATUS.INTERACT;
+        }
+        return false;
+    }
+
+    private boolean actionWait(int ticks) {
+        waitingTicks = ticks;
+        currentStatus = STATUS.WAIT;
+        return false;
+    }
+
+    private boolean actionCloseContainer() throws ActionExecutionException {
+        getContainerInteractionManager().closeContainer();
+        currentStatus = STATUS.IDLE;
+        return true;
+    }
+
+    // _____________________________________________________________________________
+
+
+    private void actionExploreUnknownFilters(List<ContainerAccessPosition> positions) {
+        if (!settings.exploreUnknownFilters) {
+            return;
+        }
+        var filteredEmptyPos = positions.stream()
+                .filter(pos -> pos.doFilter && pos.filterItems.isEmpty())
+                .toList();
+
+        if (filteredEmptyPos.isEmpty()) {
+            return;
         }
 
         var actions = new ArrayList<Callable<Boolean>>();
-        for (var pos : positions) {
+        for (var pos : filteredEmptyPos) {
             actions.add(() -> actionGoto(pos));
-            actions.add(() -> actionInteractBlock());
+            actions.add(this::actionInteractBlock);
             actions.add(() -> {
-                if (pos.doFilter) {
-                    containerInteractionManager.transferAllOf(pos.filterItems, ContainerInteractionManager.TRANSFER_DIRECTION.PLAYER_TO_CONTAINER);
-                    containerInteractionManager.transferAllExcept(pos.filterItems, ContainerInteractionManager.TRANSFER_DIRECTION.CONTAINER_TO_PLAYER);
-                } else {
-                    containerInteractionManager.transferAll(ContainerInteractionManager.TRANSFER_DIRECTION.CONTAINER_TO_PLAYER);
-                }
+                pos.filterItems = ContainerInteractionManager
+                        .getAllItemTypes(containerInteractionManager.containerSlots);
                 return true;
             });
-            actions.add(() -> actionCloseContainer());
+            actions.add(this::actionCloseContainer);
         }
         runningActions.add(new ActionList(false, actions));
-
     }
+
+    public void actionSortPositionsContent(List<ContainerAccessPosition> positions) {
+        actionEndAtStart();
+        actionExploreUnknownFilters(positions);
+
+        runningActions.add(new ActionList(false, List.of(() -> {
+            List<Item> filterItems = new ArrayList<>();
+            var actions = new ArrayList<Callable<Boolean>>();
+
+            positions.stream()
+                    .filter(pos -> pos.doFilter)
+                    .map(pos -> pos.filterItems)
+                    .forEachOrdered(filterItems::addAll);
+
+            for (var pos : positions) {
+                actions.add(() -> actionGoto(pos));
+                actions.add(this::actionInteractBlock);
+                actions.add(() -> {
+                    if (pos.doFilter) {
+                        containerInteractionManager.transferAllOf(
+                                pos.filterItems,
+                                ContainerInteractionManager.TRANSFER_DIRECTION.PLAYER_TO_CONTAINER);
+                        containerInteractionManager.transferAllExcept(
+                                pos.filterItems,
+                                ContainerInteractionManager.TRANSFER_DIRECTION.CONTAINER_TO_PLAYER);
+                    } else {
+                        containerInteractionManager.transferAllOf(
+                                filterItems,
+                                ContainerInteractionManager.TRANSFER_DIRECTION.CONTAINER_TO_PLAYER);
+                    }
+                    return true;
+                });
+                actions.add(this::actionCloseContainer);
+            }
+
+            if (!actions.isEmpty()) {
+                runningActions.add(new ActionList(false, actions));
+            }
+            return true;
+        })));
+    }
+
+    public void actionSortPlayer(List<ContainerAccessPosition> positions) {
+        actionEndAtStart();
+        actionExploreUnknownFilters(positions);
+
+        runningActions.add(new ActionList(false, List.of(() -> {
+            var playerItems = ContainerInteractionManager.getPlayerItems();
+            var actions = new ArrayList<Callable<Boolean>>();
+
+            var filterPos = positions.stream()
+                    .filter(pos -> pos.doFilter && pos.filterItems.stream().anyMatch(playerItems::contains))
+                    .toList();
+
+            for (var pos : filterPos) {
+                actions.add(() -> actionGoto(pos));
+                actions.add(this::actionInteractBlock);
+                actions.add(() -> {
+                    containerInteractionManager.transferAllOf(
+                            pos.filterItems,
+                            ContainerInteractionManager.TRANSFER_DIRECTION.PLAYER_TO_CONTAINER);
+                    return true;
+                });
+                actions.add(this::actionCloseContainer);
+            }
+
+            if (!actions.isEmpty()) {
+                runningActions.add(new ActionList(false, actions));
+            }
+
+            return true;
+        })));
+    }
+
+    private void actionEndAtStart() {
+        var actions = new ArrayList<Callable<Boolean>>();
+        actions.add(() -> {
+            runningActions.add(new ActionList(false, List.of(() -> actionGoto(startPostion))));
+            return true;
+        });
+        runningActions.add(new ActionList(false, actions));
+    }
+
 
 }
 
